@@ -1,0 +1,3 @@
+void asma(char x[])
+{
+}

@@ -1,0 +1,6 @@
+ag
+lex.yy.c
+oxout.*
+y.output
+y.tab.*
+vector.o

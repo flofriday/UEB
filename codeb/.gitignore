@@ -1,0 +1,7 @@
+codea
+codegen.c
+lex.yy.c
+oxout.*
+y.output
+y.tab.*
+*.o

@@ -1,0 +1,84 @@
+%{
+#include <stdio.h>
+#include <stdlib.h>
+#include <assert.h>
+
+#include "tree.h"
+#include "vector.h"
+#include "generator.h"
+%}
+
+%start stat
+%term OP_RETURN=0 OP_NOT=1 OP_SUB=2 OP_ADD=3 OP_MUL=4 OP_AND=5 OP_EQUAL=6 OP_GREATER=7 OP_NUM=8 OP_INDEX=9 OP_ID=10 OP_NOP=11 OP_GOTO=12 OP_IF=13 OP_ASSIGN=14 OP_VAR=15 OP_STAGE_ONE=16 OP_EXPRS=17 OP_CALL=18 OP_CLOSURE_CALL=19
+
+%%
+
+stat:   ret                         # 0 #
+stat:   OP_GOTO                     # 1 # write_goto(bnode->kids[0]->identifier, bnode->kids[0]->funcname);
+stat:   OP_IF(expr, OP_ID)          # 3 # write_if(bnode->kids[0]->reg, bnode->kids[1]->identifier, bnode->kids[1]->funcname);
+stat:   OP_IF(const, OP_ID)         # 1 # if (bnode->kids[0]->value == 1) {write_goto(bnode->kids[1]->identifier, bnode->kids[1]->funcname);}
+stat:   expr                        # 0 #
+stat:   OP_ASSIGN(OP_ID, read)      # 1 # write_move(bnode->kids[1]->reg, param_reg(bnode->kids[0]->param_id));
+stat:   OP_ASSIGN(OP_ID, const)     # 1 # write_move_val(bnode->kids[1]->value, param_reg(bnode->kids[0]->param_id));
+stat:   OP_ASSIGN(index, read)      # 1 # write_move_to_addr(bnode->kids[1]->reg, bnode->kids[0]->reg);
+stat:   OP_ASSIGN(index, const)     # 1 # write_move_to_addr_val(bnode->kids[1]->value, bnode->kids[0]->reg);
+
+index: OP_INDEX(read, read)         # 1 # write_calc_index(bnode->kids[0]->reg, bnode->kids[1]->reg, bnode->reg);
+index: OP_INDEX(read, const)        # 1 # write_calc_index_val(bnode->kids[0]->reg, bnode->kids[1]->value, bnode->reg);
+
+ret:    OP_RETURN(expr)             # 2 # write_return();
+
+exprs: expr                         # 0 #
+exprs: OP_EXPRS(exprs, expr)        # 0 #
+
+expr:   const                       # 1 # write_move_val(bnode->value, bnode->reg);
+expr:   OP_NOT(expr)                # 1 # write_not(bnode->reg);
+expr:   OP_SUB(expr)                # 1 # write_neg(bnode->reg);
+expr:   OP_SUB(OP_SUB(expr))        # 0 # 
+expr:   OP_ADD(read, read)          # 1 # write_add(bnode->kids[1]->reg, bnode->kids[0]->reg, bnode->reg);
+expr:   OP_ADD(read, const)         # 1 # write_add_val(bnode->kids[1]->value, bnode->kids[0]->reg, bnode->reg);
+expr:   OP_ADD(expr, OP_SUB(read))  # 1 # write_sub(bnode->kids[1]->kids[0]->reg, bnode->kids[0]->reg);
+expr:   OP_MUL(expr, read)          # 1 # write_mul(bnode->kids[1]->reg, bnode->kids[0]->reg);
+expr:   OP_MUL(read, const)         # 1 # write_mul_val(bnode->kids[1]->value, bnode->kids[0]->reg, bnode->reg);
+expr:   OP_AND(expr, read)          # 1 # write_and(bnode->kids[1]->reg, bnode->kids[0]->reg);
+expr:   OP_AND(expr, const)         # 1 # write_and_val(bnode->kids[1]->value, bnode->kids[0]->reg);
+expr:   OP_EQUAL(read, read)        # 3 # write_equal(bnode->kids[1]->reg, bnode->kids[0]->reg, bnode->reg);
+expr:   OP_EQUAL(read, const)       # 3 # write_equal_val(bnode->kids[1]->value, bnode->kids[0]->reg, bnode->reg);
+expr:   OP_EQUAL(const, read)       # 3 # write_equal_val(bnode->kids[0]->value, bnode->kids[1]->reg, bnode->reg);
+expr:   OP_GREATER(read, read)      # 3 # write_greater(bnode->kids[1]->reg, bnode->kids[0]->reg, bnode->reg);
+expr:   OP_GREATER(read, const)     # 3 # write_greater_val(bnode->kids[1]->value, bnode->kids[0]->reg, bnode->reg); 
+expr:   OP_GREATER(const, read)     # 3 # write_less_val(bnode->kids[0]->value, bnode->kids[1]->reg, bnode->reg);
+expr:   OP_INDEX(read, read)        # 1 # write_index(bnode->kids[0]->reg, bnode->kids[1]->reg, bnode->reg);
+expr:   OP_INDEX(read, const)       # 1 # write_index_val(bnode->kids[0]->reg, bnode->kids[1]->value, bnode->reg);
+expr:   OP_STAGE_ONE(OP_ID, exprs)  # 3 # write_stage_one(bnode->kids[0]->identifier, exprs_regs(bnode->kids[1], new_vector()), bnode->reg);
+expr:   OP_CALL(exprs)              # 15 # write_call(bnode->identifier, exprs_regs(bnode->kids[0], new_vector()), bnode->reg, bnode->param_id);
+expr:   OP_CLOSURE_CALL(read, exprs)# 16 # write_closure_call(bnode->kids[0]->reg, exprs_regs(bnode->kids[1], new_vector()), bnode->reg, bnode->param_id);
+expr:   OP_ID                       # 1 # write_move(param_reg(bnode->param_id), bnode->reg);
+
+read:   OP_ID                       # 0 # bnode->reg = param_reg(bnode->param_id); // Yes the zero in the cost is not quite right, but very often so I left it at that.
+read:   expr                        # 0 #
+
+const:  OP_NOT(const)               # 0 # bnode->value = ~bnode->kids[0]->value;
+const:  OP_SUB(const)               # 0 # bnode->value = -bnode->kids[0]->value; 
+const:  OP_ADD(const, const)        # 0 # bnode->value = bnode->kids[0]->value + bnode->kids[1]->value;
+const:  OP_MUL(const, const)        # 0 # bnode->value = bnode->kids[0]->value * bnode->kids[1]->value;
+const:  OP_AND(const, const)        # 0 # bnode->value = bnode->kids[0]->value & bnode->kids[1]->value;
+const:  OP_EQUAL(const, const)      # 0 # bnode->value = bnode->kids[0]->value == bnode->kids[1]->value ? 1 : 0;
+const:  OP_GREATER(const, const)    # 0 # bnode->value = bnode->kids[0]->value > bnode->kids[1]->value ? 1 : 0;
+const:  OP_NUM                      # 0 # 
+
+%%
+
+// Note: This could be more egonormic with this beeing a hidden recursive 
+// function, there is no need that the initial caller always creates an
+// empty array.
+vector * exprs_regs(tree* exprs_tree, vector *regs) {
+    if (exprs_tree->op != OP_EXPRS) {
+        regs = add_vector(regs, exprs_tree->reg);
+        return regs;
+    }
+
+    regs = exprs_regs(exprs_tree->kids[0], regs);
+    regs = exprs_regs(exprs_tree->kids[1], regs);
+    return regs;
+}

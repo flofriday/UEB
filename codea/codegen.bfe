@@ -1,0 +1,51 @@
+%{
+#include <stdio.h>
+#include <stdlib.h>
+#include <assert.h>
+
+#include "tree.h"
+#include "generator.h"
+%}
+
+%start stat
+%term OP_RETURN=0 OP_NOT=1 OP_SUB=2 OP_ADD=3 OP_MUL=4 OP_AND=5 OP_EQUAL=6 OP_GREATER=7 OP_NUM=8 OP_INDEX=9 OP_ID=10
+
+%%
+
+stat:   ret                         # 0 #
+
+ret:    OP_RETURN(expr)             # 1 # write_return();
+
+expr:   const                       # 1 # write_move_val(bnode->value, bnode->reg);
+expr:   OP_NOT(expr)                # 1 # write_not(bnode->reg);
+expr:   OP_SUB(expr)                # 1 # write_neg(bnode->reg);
+expr:   OP_SUB(OP_SUB(expr))        # 0 # 
+expr:   OP_ADD(read, read)          # 1 # write_add(bnode->kids[1]->reg, bnode->kids[0]->reg, bnode->reg);
+expr:   OP_ADD(read, const)         # 1 # write_add_val(bnode->kids[1]->value, bnode->kids[0]->reg, bnode->reg);
+expr:   OP_MUL(expr, read)          # 1 # write_mul(bnode->kids[1]->reg, bnode->kids[0]->reg);
+expr:   OP_MUL(read, const)         # 1 # write_mul_val(bnode->kids[1]->value, bnode->kids[0]->reg, bnode->reg);
+expr:   OP_AND(expr, read)          # 1 # write_and(bnode->kids[1]->reg, bnode->kids[0]->reg);
+expr:   OP_AND(expr, const)         # 1 # write_and_val(bnode->kids[1]->value, bnode->kids[0]->reg);
+expr:   OP_EQUAL(read, read)        # 1 # write_equal(bnode->kids[1]->reg, bnode->kids[0]->reg, bnode->reg);
+expr:   OP_EQUAL(read, const)       # 3 # write_equal_val(bnode->kids[1]->value, bnode->kids[0]->reg, bnode->reg);
+expr:   OP_EQUAL(const, read)       # 3 # write_equal_val(bnode->kids[0]->value, bnode->kids[1]->reg, bnode->reg);
+expr:   OP_GREATER(read, read)      # 3 # write_greater(bnode->kids[1]->reg, bnode->kids[0]->reg, bnode->reg);
+expr:   OP_GREATER(read, const)     # 3 # write_greater_val(bnode->kids[1]->value, bnode->kids[0]->reg, bnode->reg); // TODO: we could do the same for the other direction
+expr:   OP_GREATER(const, read)     # 3 # write_less_val(bnode->kids[0]->value, bnode->kids[1]->reg, bnode->reg); // TODO: we could do the same for the other direction
+expr:   OP_INDEX(expr, expr)        # 1 # write_index(bnode->kids[0]->reg, bnode->kids[1]->reg);
+expr:   OP_INDEX(expr, const)       # 1 # write_index_val(bnode->kids[0]->reg, bnode->kids[1]->value);
+expr:   OP_ID                       # 1 # write_move(param_reg(bnode->param_id), bnode->reg);
+
+read:   OP_ID                       # 0 #  bnode->reg = param_reg(bnode->param_id);
+read:   expr                        # 1 # 
+
+const:  OP_NOT(const)               # 0 # bnode->value = ~bnode->kids[0]->value;
+const:  OP_SUB(const)               # 0 # bnode->value = -bnode->kids[0]->value; 
+const:  OP_ADD(const, const)        # 0 # bnode->value = bnode->kids[0]->value + bnode->kids[1]->value;
+const:  OP_MUL(const, const)        # 0 # bnode->value = bnode->kids[0]->value * bnode->kids[1]->value;
+const:  OP_AND(const, const)        # 0 # bnode->value = bnode->kids[0]->value & bnode->kids[1]->value;
+const:  OP_EQUAL(const, const)      # 0 # bnode->value = bnode->kids[0]->value == bnode->kids[1]->value ? 1 : 0;
+const:  OP_GREATER(const, const)    # 0 # bnode->value = bnode->kids[0]->value > bnode->kids[1]->value ? 1 : 0;
+const:  OP_NUM                      # 0 #
+
+%%
